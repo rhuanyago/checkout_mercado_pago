@@ -50,8 +50,7 @@ class Checkout extends Component
         UserService $userService,
         OrderService $orderService,
         $data
-    )
-    {
+    ) {
         try {
             $payment = $checkoutService->creditCardPayment($data, $this->user->all(), $this->address->all());
             $user = $userService->store($this->user->all(), $this->address->all());
@@ -60,11 +59,9 @@ class Checkout extends Component
             Mail::to($user->email)->queue(new OrderCreatedMail($order));
 
             $this->responsePayment();
-
         } catch (PaymentException $e) {
             $this->addError('payment', $e->getMessage());
         } catch (\Exception $e) {
-            dd($e);
             $this->addError('payment', $e->getMessage());
         }
     }
@@ -74,9 +71,8 @@ class Checkout extends Component
         UserService $userService,
         OrderService $orderService,
         $data
-    )
-    {
-        try{
+    ) {
+        try {
             $payment = $checkoutService->pixOrBankSlipPayment($data, $this->user->all(), $this->address->all());
             $user = $userService->store($this->user->all(), $this->address->all());
             $order = $orderService->update($this->cart['id'], $payment, $user, $this->address->all());
@@ -92,7 +88,8 @@ class Checkout extends Component
         }
     }
 
-    public function responsePayment(){
+    public function responsePayment()
+    {
         $url = URL::temporarySignedRoute(
             name: 'checkout.result',
             expiration: 3600,

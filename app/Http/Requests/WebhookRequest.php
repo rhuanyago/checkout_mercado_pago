@@ -11,8 +11,7 @@ class WebhookRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return $this->user_id == config('payment.mercadopago.user_id')
-            && $this->application_id == config('payment.mercadopago.application_id');
+        return $this->user_id == config('payment.mercadopago.user_id');
     }
 
     /**
@@ -25,7 +24,6 @@ class WebhookRequest extends FormRequest
         return [
             'action' => 'required',
             'user_id' => 'required',
-            'application_id' => 'required',
             'data.id' => 'required',
         ];
     }

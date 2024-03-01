@@ -2,21 +2,26 @@
 
 namespace App\Services;
 
-use App\Enums\OrderStatusEnum;
-use App\Exceptions\PaymentException;
+use MercadoPago\SDK;
 use App\Models\Order;
-use Database\Seeders\OrderSeeder;
-use Illuminate\Support\Str;
 use MercadoPago\Payer;
 use MercadoPago\Payment;
-use MercadoPago\SDK;
+use Illuminate\Support\Str;
+use App\Enums\OrderStatusEnum;
+use Database\Seeders\OrderSeeder;
+use MercadoPago\MercadoPagoConfig;
+use App\Exceptions\PaymentException;
+use MercadoPago\Exceptions\MPApiException;
+use MercadoPago\Client\Common\RequestOptions;
+use MercadoPago\Client\Payment\PaymentClient;
 
 class CheckoutService
 {
 
     public function __construct()
     {
-        SDK::setAccessToken(config('payment.mercadopago.access_token'));
+        MercadoPagoConfig::setAccessToken(config('payment.mercadopago.access_token'));
+        MercadoPagoConfig::setRuntimeEnviroment(MercadoPagoConfig::LOCAL);
     }
 
     public function loadCart(): array
@@ -41,22 +46,17 @@ class CheckoutService
 
     public function creditCardPayment($data, $user, $address)
     {
-        $payment = new Payment();
-        $payment->transaction_amount = (float)$data['transaction_amount'];
-        $payment->token = $data['token'];
-        $payment->description = $data['description'];
-        $payment->installments = (int)$data['installments'];
-        $payment->payment_method_id = $data['payment_method_id'];
-        $payment->issuer_id = (int)$data['issuer_id'];
+        $client = new PaymentClient();
 
-        $payment->payer = $this->buildPayer($user, $address);
+        $request_options = new RequestOptions();
+        $request_options->setCustomHeaders(["X-Idempotency-Key: " . Str::uuid()]);
 
-        $payment->save();
+        $payment = $client->create($data, $request_options);
 
         throw_if(
             !$payment->id || $payment->status === 'rejected',
             PaymentException::class,
-            $payment?->error?->message ?? "Verifique os dados do cartão"
+            $payment?->status_detail ?? "Verifique os dados do cartão"
         );
 
         return $payment;
@@ -64,18 +64,31 @@ class CheckoutService
 
     public function pixOrBankSlipPayment($data, $user, $address)
     {
-        $payment = new Payment();
-        $payment->transaction_amount = $data['amount'];
-        $payment->description = "Título do produto";
-        $payment->payment_method_id = $data['method'];
-        $payment->payer = $this->buildPayer($user, $address);
+        $createRequest = [
+            "transaction_amount" => (int)$data['amount'],
+            "description" => "Pagamento de produto",
+            "payment_method_id" => $data['method'],
+            "payer" => $this->buildPayer($user, $address)
+        ];
 
-        $payment->save();
+        $client = new PaymentClient();
+
+        $request_options = new RequestOptions();
+        $request_options->setCustomHeaders(["X-Idempotency-Key: " . Str::uuid()]);
+
+        if ($data['method'] === 'bolbradesco') {
+            $createRequest['payer']['identification'] = [
+                "type" => 'CPF',
+                "number" => $user['cpf']
+            ];
+        }
+
+        $payment = $client->create($createRequest, $request_options);
 
         throw_if(
             !$payment->id || $payment->status === 'rejected',
             PaymentException::class,
-            $payment?->error?->message ?? "Verifique os dados do cartão"
+            $payment?->status_detail ?? "Verifique seu CPF"
         );
 
         return $payment;
@@ -84,23 +97,18 @@ class CheckoutService
     public function buildPayer($user, $address)
     {
         $first_name = explode(' ', $user['name'])[0];
-        return array(
+        return [
             "email" => $user['email'],
-            "first_name" => $first_name,
-            "last_name" => Str::of($user['name'])->after($first_name)->trim(),
-            "identification" => array(
-                "type" => "CPF",
-                "number" => $user['cpf']
-            ),
-            "address"=>  array(
+            "first_name" => 'Rhuan',
+            "last_name" => 'Yago',
+            "address" =>  [
                 "zip_code" => $address['zipcode'],
                 "street_name" => $address['address'],
                 "street_number" => $address['number'],
                 "neighborhood" => $address['district'],
                 "city" => $address['city'],
                 "federal_unit" => $address['state']
-            )
-        );
+            ]
+        ];
     }
-
 }
